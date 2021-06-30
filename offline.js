@@ -1,5 +1,5 @@
 ﻿{
-	"version": 1625066440,
+	"version": 1625078891,
 	"fileList": [
 		"data.js",
 		"c2runtime.js",
@@ -7,6 +7,7 @@
 		"offlineClient.js",
 		"images/thered-sheet0.png",
 		"images/theblue-sheet0.png",
+		"images/theblue-sheet1.png",
 		"images/generator-sheet0.png",
 		"icon-16.png",
 		"icon-32.png",

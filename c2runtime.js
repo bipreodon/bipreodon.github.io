@@ -15220,6 +15220,205 @@ cr.system_object.prototype.loadFromJSON = function (o)
 cr.shaders = {};
 ;
 ;
+cr.plugins_.Function = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var pluginProto = cr.plugins_.Function.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	var funcStack = [];
+	var funcStackPtr = -1;
+	var isInPreview = false;	// set in onCreate
+	function FuncStackEntry()
+	{
+		this.name = "";
+		this.retVal = 0;
+		this.params = [];
+	};
+	function pushFuncStack()
+	{
+		funcStackPtr++;
+		if (funcStackPtr === funcStack.length)
+			funcStack.push(new FuncStackEntry());
+		return funcStack[funcStackPtr];
+	};
+	function getCurrentFuncStack()
+	{
+		if (funcStackPtr < 0)
+			return null;
+		return funcStack[funcStackPtr];
+	};
+	function getOneAboveFuncStack()
+	{
+		if (!funcStack.length)
+			return null;
+		var i = funcStackPtr + 1;
+		if (i >= funcStack.length)
+			i = funcStack.length - 1;
+		return funcStack[i];
+	};
+	function popFuncStack()
+	{
+;
+		funcStackPtr--;
+	};
+	instanceProto.onCreate = function()
+	{
+		isInPreview = (typeof cr_is_preview !== "undefined");
+		var self = this;
+		window["c2_callFunction"] = function (name_, params_)
+		{
+			var i, len, v;
+			var fs = pushFuncStack();
+			fs.name = name_.toLowerCase();
+			fs.retVal = 0;
+			if (params_)
+			{
+				fs.params.length = params_.length;
+				for (i = 0, len = params_.length; i < len; ++i)
+				{
+					v = params_[i];
+					if (typeof v === "number" || typeof v === "string")
+						fs.params[i] = v;
+					else if (typeof v === "boolean")
+						fs.params[i] = (v ? 1 : 0);
+					else
+						fs.params[i] = 0;
+				}
+			}
+			else
+			{
+				cr.clearArray(fs.params);
+			}
+			self.runtime.trigger(cr.plugins_.Function.prototype.cnds.OnFunction, self, fs.name);
+			popFuncStack();
+			return fs.retVal;
+		};
+	};
+	function Cnds() {};
+	Cnds.prototype.OnFunction = function (name_)
+	{
+		var fs = getCurrentFuncStack();
+		if (!fs)
+			return false;
+		return cr.equals_nocase(name_, fs.name);
+	};
+	Cnds.prototype.CompareParam = function (index_, cmp_, value_)
+	{
+		var fs = getCurrentFuncStack();
+		if (!fs)
+			return false;
+		index_ = cr.floor(index_);
+		if (index_ < 0 || index_ >= fs.params.length)
+			return false;
+		return cr.do_cmp(fs.params[index_], cmp_, value_);
+	};
+	pluginProto.cnds = new Cnds();
+	function Acts() {};
+	Acts.prototype.CallFunction = function (name_, params_)
+	{
+		var fs = pushFuncStack();
+		fs.name = name_.toLowerCase();
+		fs.retVal = 0;
+		cr.shallowAssignArray(fs.params, params_);
+		var ran = this.runtime.trigger(cr.plugins_.Function.prototype.cnds.OnFunction, this, fs.name);
+		if (isInPreview && !ran)
+		{
+;
+		}
+		popFuncStack();
+	};
+	Acts.prototype.SetReturnValue = function (value_)
+	{
+		var fs = getCurrentFuncStack();
+		if (fs)
+			fs.retVal = value_;
+		else
+;
+	};
+	Acts.prototype.CallExpression = function (unused)
+	{
+	};
+	pluginProto.acts = new Acts();
+	function Exps() {};
+	Exps.prototype.ReturnValue = function (ret)
+	{
+		var fs = getOneAboveFuncStack();
+		if (fs)
+			ret.set_any(fs.retVal);
+		else
+			ret.set_int(0);
+	};
+	Exps.prototype.ParamCount = function (ret)
+	{
+		var fs = getCurrentFuncStack();
+		if (fs)
+			ret.set_int(fs.params.length);
+		else
+		{
+;
+			ret.set_int(0);
+		}
+	};
+	Exps.prototype.Param = function (ret, index_)
+	{
+		index_ = cr.floor(index_);
+		var fs = getCurrentFuncStack();
+		if (fs)
+		{
+			if (index_ >= 0 && index_ < fs.params.length)
+			{
+				ret.set_any(fs.params[index_]);
+			}
+			else
+			{
+;
+				ret.set_int(0);
+			}
+		}
+		else
+		{
+;
+			ret.set_int(0);
+		}
+	};
+	Exps.prototype.Call = function (ret, name_)
+	{
+		var fs = pushFuncStack();
+		fs.name = name_.toLowerCase();
+		fs.retVal = 0;
+		cr.clearArray(fs.params);
+		var i, len;
+		for (i = 2, len = arguments.length; i < len; i++)
+			fs.params.push(arguments[i]);
+		var ran = this.runtime.trigger(cr.plugins_.Function.prototype.cnds.OnFunction, this, fs.name);
+		if (isInPreview && !ran)
+		{
+;
+		}
+		popFuncStack();
+		ret.set_any(fs.retVal);
+	};
+	pluginProto.exps = new Exps();
+}());
+;
+;
 cr.plugins_.Sprite = function(runtime)
 {
 	this.runtime = runtime;
@@ -17105,6 +17304,439 @@ cr.plugins_.Text = function(runtime)
 }());
 ;
 ;
+cr.behaviors.EightDir = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var behaviorProto = cr.behaviors.EightDir.prototype;
+	behaviorProto.Type = function(behavior, objtype)
+	{
+		this.behavior = behavior;
+		this.objtype = objtype;
+		this.runtime = behavior.runtime;
+	};
+	var behtypeProto = behaviorProto.Type.prototype;
+	behtypeProto.onCreate = function()
+	{
+	};
+	behaviorProto.Instance = function(type, inst)
+	{
+		this.type = type;
+		this.behavior = type.behavior;
+		this.inst = inst;				// associated object instance to modify
+		this.runtime = type.runtime;
+		this.upkey = false;
+		this.downkey = false;
+		this.leftkey = false;
+		this.rightkey = false;
+		this.ignoreInput = false;
+		this.simup = false;
+		this.simdown = false;
+		this.simleft = false;
+		this.simright = false;
+		this.lastuptick = -1;
+		this.lastdowntick = -1;
+		this.lastlefttick = -1;
+		this.lastrighttick = -1;
+		this.dx = 0;
+		this.dy = 0;
+	};
+	var behinstProto = behaviorProto.Instance.prototype;
+	behinstProto.onCreate = function()
+	{
+		this.maxspeed = this.properties[0];
+		this.acc = this.properties[1];
+		this.dec = this.properties[2];
+		this.directions = this.properties[3];	// 0=Up & down, 1=Left & right, 2=4 directions, 3=8 directions"
+		this.angleMode = this.properties[4];	// 0=No,1=90-degree intervals, 2=45-degree intervals, 3=360 degree (smooth)
+		this.defaultControls = (this.properties[5] === 1);	// 0=no, 1=yes
+		this.enabled = (this.properties[6] !== 0);
+		if (this.defaultControls && !this.runtime.isDomFree)
+		{
+			jQuery(document).keydown(
+				(function (self) {
+					return function(info) {
+						self.onKeyDown(info);
+					};
+				})(this)
+			);
+			jQuery(document).keyup(
+				(function (self) {
+					return function(info) {
+						self.onKeyUp(info);
+					};
+				})(this)
+			);
+		}
+	};
+	behinstProto.saveToJSON = function ()
+	{
+		return {
+			"dx": this.dx,
+			"dy": this.dy,
+			"enabled": this.enabled,
+			"maxspeed": this.maxspeed,
+			"acc": this.acc,
+			"dec": this.dec,
+			"ignoreInput": this.ignoreInput
+		};
+	};
+	behinstProto.loadFromJSON = function (o)
+	{
+		this.dx = o["dx"];
+		this.dy = o["dy"];
+		this.enabled = o["enabled"];
+		this.maxspeed = o["maxspeed"];
+		this.acc = o["acc"];
+		this.dec = o["dec"];
+		this.ignoreInput = o["ignoreInput"];
+		this.upkey = false;
+		this.downkey = false;
+		this.leftkey = false;
+		this.rightkey = false;
+		this.simup = false;
+		this.simdown = false;
+		this.simleft = false;
+		this.simright = false;
+		this.lastuptick = -1;
+		this.lastdowntick = -1;
+		this.lastlefttick = -1;
+		this.lastrighttick = -1;
+	};
+	behinstProto.onKeyDown = function (info)
+	{
+		var tickcount = this.runtime.tickcount;
+		switch (info.which) {
+		case 37:	// left
+			info.preventDefault();
+			if (this.lastlefttick < tickcount)
+				this.leftkey = true;
+			break;
+		case 38:	// up
+			info.preventDefault();
+			if (this.lastuptick < tickcount)
+				this.upkey = true;
+			break;
+		case 39:	// right
+			info.preventDefault();
+			if (this.lastrighttick < tickcount)
+				this.rightkey = true;
+			break;
+		case 40:	// down
+			info.preventDefault();
+			if (this.lastdowntick < tickcount)
+				this.downkey = true;
+			break;
+		}
+	};
+	behinstProto.onKeyUp = function (info)
+	{
+		var tickcount = this.runtime.tickcount;
+		switch (info.which) {
+		case 37:	// left
+			info.preventDefault();
+			this.leftkey = false;
+			this.lastlefttick = tickcount;
+			break;
+		case 38:	// up
+			info.preventDefault();
+			this.upkey = false;
+			this.lastuptick = tickcount;
+			break;
+		case 39:	// right
+			info.preventDefault();
+			this.rightkey = false;
+			this.lastrighttick = tickcount;
+			break;
+		case 40:	// down
+			info.preventDefault();
+			this.downkey = false;
+			this.lastdowntick = tickcount;
+			break;
+		}
+	};
+	behinstProto.onWindowBlur = function ()
+	{
+		this.upkey = false;
+		this.downkey = false;
+		this.leftkey = false;
+		this.rightkey = false;
+	};
+	behinstProto.tick = function ()
+	{
+		var dt = this.runtime.getDt(this.inst);
+		var left = this.leftkey || this.simleft;
+		var right = this.rightkey || this.simright;
+		var up = this.upkey || this.simup;
+		var down = this.downkey || this.simdown;
+		this.simleft = false;
+		this.simright = false;
+		this.simup = false;
+		this.simdown = false;
+		if (!this.enabled)
+			return;
+		var collobj = this.runtime.testOverlapSolid(this.inst);
+		if (collobj)
+		{
+			this.runtime.registerCollision(this.inst, collobj);
+			if (!this.runtime.pushOutSolidNearest(this.inst))
+				return;		// must be stuck in solid
+		}
+		if (this.ignoreInput)
+		{
+			left = false;
+			right = false;
+			up = false;
+			down = false;
+		}
+		if (this.directions === 0)
+		{
+			left = false;
+			right = false;
+		}
+		else if (this.directions === 1)
+		{
+			up = false;
+			down = false;
+		}
+		if (this.directions === 2 && (up || down))
+		{
+			left = false;
+			right = false;
+		}
+		if (left == right)	// both up or both down
+		{
+			if (this.dx < 0)
+			{
+				this.dx += this.dec * dt;
+				if (this.dx > 0)
+					this.dx = 0;
+			}
+			else if (this.dx > 0)
+			{
+				this.dx -= this.dec * dt;
+				if (this.dx < 0)
+					this.dx = 0;
+			}
+		}
+		if (up == down)
+		{
+			if (this.dy < 0)
+			{
+				this.dy += this.dec * dt;
+				if (this.dy > 0)
+					this.dy = 0;
+			}
+			else if (this.dy > 0)
+			{
+				this.dy -= this.dec * dt;
+				if (this.dy < 0)
+					this.dy = 0;
+			}
+		}
+		if (left && !right)
+		{
+			if (this.dx > 0)
+				this.dx -= (this.acc + this.dec) * dt;
+			else
+				this.dx -= this.acc * dt;
+		}
+		if (right && !left)
+		{
+			if (this.dx < 0)
+				this.dx += (this.acc + this.dec) * dt;
+			else
+				this.dx += this.acc * dt;
+		}
+		if (up && !down)
+		{
+			if (this.dy > 0)
+				this.dy -= (this.acc + this.dec) * dt;
+			else
+				this.dy -= this.acc * dt;
+		}
+		if (down && !up)
+		{
+			if (this.dy < 0)
+				this.dy += (this.acc + this.dec) * dt;
+			else
+				this.dy += this.acc * dt;
+		}
+		var ax, ay;
+		if (this.dx !== 0 || this.dy !== 0)
+		{
+			var speed = Math.sqrt(this.dx * this.dx + this.dy * this.dy);
+			if (speed > this.maxspeed)
+			{
+				var a = Math.atan2(this.dy, this.dx);
+				this.dx = this.maxspeed * Math.cos(a);
+				this.dy = this.maxspeed * Math.sin(a);
+			}
+			var oldx = this.inst.x;
+			var oldy = this.inst.y;
+			var oldangle = this.inst.angle;
+			this.inst.x += this.dx * dt;
+			this.inst.set_bbox_changed();
+			collobj = this.runtime.testOverlapSolid(this.inst);
+			if (collobj)
+			{
+				if (!this.runtime.pushOutSolid(this.inst, (this.dx < 0 ? 1 : -1), 0, Math.abs(Math.floor(this.dx * dt))))
+				{
+					this.inst.x = oldx;
+				}
+				this.dx = 0;
+				this.inst.set_bbox_changed();
+				this.runtime.registerCollision(this.inst, collobj);
+			}
+			this.inst.y += this.dy * dt;
+			this.inst.set_bbox_changed();
+			collobj = this.runtime.testOverlapSolid(this.inst);
+			if (collobj)
+			{
+				if (!this.runtime.pushOutSolid(this.inst, 0, (this.dy < 0 ? 1 : -1), Math.abs(Math.floor(this.dy * dt))))
+				{
+					this.inst.y = oldy;
+				}
+				this.dy = 0;
+				this.inst.set_bbox_changed();
+				this.runtime.registerCollision(this.inst, collobj);
+			}
+			ax = cr.round6dp(this.dx);
+			ay = cr.round6dp(this.dy);
+			if ((ax !== 0 || ay !== 0) && this.inst.type.plugin.is_rotatable)
+			{
+				if (this.angleMode === 1)	// 90 degree intervals
+					this.inst.angle = cr.to_clamped_radians(Math.round(cr.to_degrees(Math.atan2(ay, ax)) / 90.0) * 90.0);
+				else if (this.angleMode === 2)	// 45 degree intervals
+					this.inst.angle = cr.to_clamped_radians(Math.round(cr.to_degrees(Math.atan2(ay, ax)) / 45.0) * 45.0);
+				else if (this.angleMode === 3)	// 360 degree
+					this.inst.angle = Math.atan2(ay, ax);
+			}
+			this.inst.set_bbox_changed();
+			if (this.inst.angle != oldangle)
+			{
+				collobj = this.runtime.testOverlapSolid(this.inst);
+				if (collobj)
+				{
+					this.inst.angle = oldangle;
+					this.inst.set_bbox_changed();
+					this.runtime.registerCollision(this.inst, collobj);
+				}
+			}
+		}
+	};
+	function Cnds() {};
+	Cnds.prototype.IsMoving = function ()
+	{
+		var speed = Math.sqrt(this.dx * this.dx + this.dy * this.dy);
+		return speed > 1e-10;
+	};
+	Cnds.prototype.CompareSpeed = function (cmp, s)
+	{
+		var speed = Math.sqrt(this.dx * this.dx + this.dy * this.dy);
+		return cr.do_cmp(speed, cmp, s);
+	};
+	behaviorProto.cnds = new Cnds();
+	function Acts() {};
+	Acts.prototype.Stop = function ()
+	{
+		this.dx = 0;
+		this.dy = 0;
+	};
+	Acts.prototype.Reverse = function ()
+	{
+		this.dx *= -1;
+		this.dy *= -1;
+	};
+	Acts.prototype.SetIgnoreInput = function (ignoring)
+	{
+		this.ignoreInput = ignoring;
+	};
+	Acts.prototype.SetSpeed = function (speed)
+	{
+		if (speed < 0)
+			speed = 0;
+		if (speed > this.maxspeed)
+			speed = this.maxspeed;
+		var a = Math.atan2(this.dy, this.dx);
+		this.dx = speed * Math.cos(a);
+		this.dy = speed * Math.sin(a);
+	};
+	Acts.prototype.SetMaxSpeed = function (maxspeed)
+	{
+		this.maxspeed = maxspeed;
+		if (this.maxspeed < 0)
+			this.maxspeed = 0;
+	};
+	Acts.prototype.SetAcceleration = function (acc)
+	{
+		this.acc = acc;
+		if (this.acc < 0)
+			this.acc = 0;
+	};
+	Acts.prototype.SetDeceleration = function (dec)
+	{
+		this.dec = dec;
+		if (this.dec < 0)
+			this.dec = 0;
+	};
+	Acts.prototype.SimulateControl = function (ctrl)
+	{
+		switch (ctrl) {
+		case 0:		this.simleft = true;	break;
+		case 1:		this.simright = true;	break;
+		case 2:		this.simup = true;		break;
+		case 3:		this.simdown = true;	break;
+		}
+	};
+	Acts.prototype.SetEnabled = function (en)
+	{
+		this.enabled = (en === 1);
+	};
+	Acts.prototype.SetVectorX = function (x_)
+	{
+		this.dx = x_;
+	};
+	Acts.prototype.SetVectorY = function (y_)
+	{
+		this.dy = y_;
+	};
+	behaviorProto.acts = new Acts();
+	function Exps() {};
+	Exps.prototype.Speed = function (ret)
+	{
+		ret.set_float(Math.sqrt(this.dx * this.dx + this.dy * this.dy));
+	};
+	Exps.prototype.MaxSpeed = function (ret)
+	{
+		ret.set_float(this.maxspeed);
+	};
+	Exps.prototype.Acceleration = function (ret)
+	{
+		ret.set_float(this.acc);
+	};
+	Exps.prototype.Deceleration = function (ret)
+	{
+		ret.set_float(this.dec);
+	};
+	Exps.prototype.MovingAngle = function (ret)
+	{
+		ret.set_float(cr.to_degrees(Math.atan2(this.dy, this.dx)));
+	};
+	Exps.prototype.VectorX = function (ret)
+	{
+		ret.set_float(this.dx);
+	};
+	Exps.prototype.VectorY = function (ret)
+	{
+		ret.set_float(this.dy);
+	};
+	behaviorProto.exps = new Exps();
+}());
+;
+;
 cr.behaviors.Pathfinding = function(runtime)
 {
 	this.runtime = runtime;
@@ -17874,10 +18506,177 @@ cr.behaviors.Pathfinding = function(runtime)
 	};
 	behaviorProto.exps = new Exps();
 }());
+;
+;
+cr.behaviors.Pin = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var behaviorProto = cr.behaviors.Pin.prototype;
+	behaviorProto.Type = function(behavior, objtype)
+	{
+		this.behavior = behavior;
+		this.objtype = objtype;
+		this.runtime = behavior.runtime;
+	};
+	var behtypeProto = behaviorProto.Type.prototype;
+	behtypeProto.onCreate = function()
+	{
+	};
+	behaviorProto.Instance = function(type, inst)
+	{
+		this.type = type;
+		this.behavior = type.behavior;
+		this.inst = inst;				// associated object instance to modify
+		this.runtime = type.runtime;
+	};
+	var behinstProto = behaviorProto.Instance.prototype;
+	behinstProto.onCreate = function()
+	{
+		this.pinObject = null;
+		this.pinObjectUid = -1;		// for loading
+		this.pinAngle = 0;
+		this.pinDist = 0;
+		this.myStartAngle = 0;
+		this.theirStartAngle = 0;
+		this.lastKnownAngle = 0;
+		this.mode = 0;				// 0 = position & angle; 1 = position; 2 = angle; 3 = rope; 4 = bar
+		var self = this;
+		if (!this.recycled)
+		{
+			this.myDestroyCallback = (function(inst) {
+													self.onInstanceDestroyed(inst);
+												});
+		}
+		this.runtime.addDestroyCallback(this.myDestroyCallback);
+	};
+	behinstProto.saveToJSON = function ()
+	{
+		return {
+			"uid": this.pinObject ? this.pinObject.uid : -1,
+			"pa": this.pinAngle,
+			"pd": this.pinDist,
+			"msa": this.myStartAngle,
+			"tsa": this.theirStartAngle,
+			"lka": this.lastKnownAngle,
+			"m": this.mode
+		};
+	};
+	behinstProto.loadFromJSON = function (o)
+	{
+		this.pinObjectUid = o["uid"];		// wait until afterLoad to look up
+		this.pinAngle = o["pa"];
+		this.pinDist = o["pd"];
+		this.myStartAngle = o["msa"];
+		this.theirStartAngle = o["tsa"];
+		this.lastKnownAngle = o["lka"];
+		this.mode = o["m"];
+	};
+	behinstProto.afterLoad = function ()
+	{
+		if (this.pinObjectUid === -1)
+			this.pinObject = null;
+		else
+		{
+			this.pinObject = this.runtime.getObjectByUID(this.pinObjectUid);
+;
+		}
+		this.pinObjectUid = -1;
+	};
+	behinstProto.onInstanceDestroyed = function (inst)
+	{
+		if (this.pinObject == inst)
+			this.pinObject = null;
+	};
+	behinstProto.onDestroy = function()
+	{
+		this.pinObject = null;
+		this.runtime.removeDestroyCallback(this.myDestroyCallback);
+	};
+	behinstProto.tick = function ()
+	{
+	};
+	behinstProto.tick2 = function ()
+	{
+		if (!this.pinObject)
+			return;
+		if (this.lastKnownAngle !== this.inst.angle)
+			this.myStartAngle = cr.clamp_angle(this.myStartAngle + (this.inst.angle - this.lastKnownAngle));
+		var newx = this.inst.x;
+		var newy = this.inst.y;
+		if (this.mode === 3 || this.mode === 4)		// rope mode or bar mode
+		{
+			var dist = cr.distanceTo(this.inst.x, this.inst.y, this.pinObject.x, this.pinObject.y);
+			if ((dist > this.pinDist) || (this.mode === 4 && dist < this.pinDist))
+			{
+				var a = cr.angleTo(this.pinObject.x, this.pinObject.y, this.inst.x, this.inst.y);
+				newx = this.pinObject.x + Math.cos(a) * this.pinDist;
+				newy = this.pinObject.y + Math.sin(a) * this.pinDist;
+			}
+		}
+		else
+		{
+			newx = this.pinObject.x + Math.cos(this.pinObject.angle + this.pinAngle) * this.pinDist;
+			newy = this.pinObject.y + Math.sin(this.pinObject.angle + this.pinAngle) * this.pinDist;
+		}
+		var newangle = cr.clamp_angle(this.myStartAngle + (this.pinObject.angle - this.theirStartAngle));
+		this.lastKnownAngle = newangle;
+		if ((this.mode === 0 || this.mode === 1 || this.mode === 3 || this.mode === 4)
+			&& (this.inst.x !== newx || this.inst.y !== newy))
+		{
+			this.inst.x = newx;
+			this.inst.y = newy;
+			this.inst.set_bbox_changed();
+		}
+		if ((this.mode === 0 || this.mode === 2) && (this.inst.angle !== newangle))
+		{
+			this.inst.angle = newangle;
+			this.inst.set_bbox_changed();
+		}
+	};
+	function Cnds() {};
+	Cnds.prototype.IsPinned = function ()
+	{
+		return !!this.pinObject;
+	};
+	behaviorProto.cnds = new Cnds();
+	function Acts() {};
+	Acts.prototype.Pin = function (obj, mode_)
+	{
+		if (!obj)
+			return;
+		var otherinst = obj.getFirstPicked(this.inst);
+		if (!otherinst)
+			return;
+		this.pinObject = otherinst;
+		this.pinAngle = cr.angleTo(otherinst.x, otherinst.y, this.inst.x, this.inst.y) - otherinst.angle;
+		this.pinDist = cr.distanceTo(otherinst.x, otherinst.y, this.inst.x, this.inst.y);
+		this.myStartAngle = this.inst.angle;
+		this.lastKnownAngle = this.inst.angle;
+		this.theirStartAngle = otherinst.angle;
+		this.mode = mode_;
+	};
+	Acts.prototype.Unpin = function ()
+	{
+		this.pinObject = null;
+	};
+	behaviorProto.acts = new Acts();
+	function Exps() {};
+	Exps.prototype.PinnedUID = function (ret)
+	{
+		ret.set_int(this.pinObject ? this.pinObject.uid : -1);
+	};
+	behaviorProto.exps = new Exps();
+}());
 cr.getObjectRefTable = function () { return [
+	cr.plugins_.Function,
 	cr.plugins_.Text,
 	cr.plugins_.Sprite,
 	cr.behaviors.Pathfinding,
+	cr.behaviors.EightDir,
+	cr.behaviors.Pin,
 	cr.plugins_.Sprite.prototype.cnds.CompareInstanceVar,
 	cr.system_object.prototype.cnds.Every,
 	cr.behaviors.Pathfinding.prototype.acts.FindPath,
@@ -17897,13 +18696,23 @@ cr.getObjectRefTable = function () { return [
 	cr.plugins_.Sprite.prototype.acts.Destroy,
 	cr.system_object.prototype.acts.AddVar,
 	cr.plugins_.Sprite.prototype.acts.Spawn,
+	cr.behaviors.Pathfinding.prototype.acts.SetSpeed,
 	cr.system_object.prototype.exps.choose,
 	cr.plugins_.Sprite.prototype.acts.SetAngle,
-	cr.plugins_.Sprite.prototype.acts.AddInstanceVar,
 	cr.plugins_.Sprite.prototype.cnds.OnCreated,
-	cr.behaviors.Pathfinding.prototype.acts.SetSpeed,
 	cr.plugins_.Sprite.prototype.acts.SetAnimFrame,
 	cr.system_object.prototype.cnds.EveryTick,
 	cr.plugins_.Text.prototype.acts.SetText,
-	cr.plugins_.Sprite.prototype.acts.SetOpacity
+	cr.plugins_.Sprite.prototype.acts.SetOpacity,
+	cr.plugins_.Sprite.prototype.acts.SetSize,
+	cr.plugins_.Sprite.prototype.exps.Width,
+	cr.plugins_.Sprite.prototype.exps.Height,
+	cr.plugins_.Sprite.prototype.acts.AddInstanceVar,
+	cr.plugins_.Text.prototype.cnds.CompareInstanceVar,
+	cr.plugins_.Sprite.prototype.cnds.OnCollision,
+	cr.behaviors.EightDir.prototype.acts.SetSpeed,
+	cr.plugins_.Sprite.prototype.cnds.OnDestroyed,
+	cr.system_object.prototype.acts.CreateObject,
+	cr.behaviors.Pathfinding.prototype.acts.SetEnabled,
+	cr.behaviors.EightDir.prototype.acts.SetEnabled
 ];};
