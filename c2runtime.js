@@ -18710,7 +18710,7 @@ cr.getObjectRefTable = function () { return [
 	cr.plugins_.Sprite.prototype.acts.AddInstanceVar,
 	cr.plugins_.Text.prototype.cnds.CompareInstanceVar,
 	cr.plugins_.Sprite.prototype.cnds.OnCollision,
-	cr.behaviors.EightDir.prototype.acts.SetSpeed,
+	cr.behaviors.EightDir.prototype.acts.SetMaxSpeed,
 	cr.plugins_.Sprite.prototype.cnds.OnDestroyed,
 	cr.system_object.prototype.acts.CreateObject,
 	cr.behaviors.Pathfinding.prototype.acts.SetEnabled,
