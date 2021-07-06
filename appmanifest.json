@@ -1,9 +1,9 @@
 ﻿{
-	"name": "Fight",
-	"short_name": "Fight",
+	"name": "Gathers.Navigator",
+	"short_name": "Gathers.Navigator",
 	"start_url": "index.html",
 	"display": "fullscreen",
-	"orientation": "landscape",
+	"orientation": "any",
 	"icons": [{
 		"src": "icon-16.png",
 		"sizes": "16x16",
