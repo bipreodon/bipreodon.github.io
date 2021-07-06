@@ -20734,6 +20734,7 @@ cr.getObjectRefTable = function () { return [
 	cr.plugins_.Sprite.prototype.acts.SetVisible,
 	cr.plugins_.Text.prototype.acts.SetVisible,
 	cr.behaviors.Fade.prototype.acts.StartFade,
+	cr.plugins_.sliderbar.prototype.acts.SetVisible,
 	cr.behaviors.Pathfinding.prototype.cnds.OnPathFound,
 	cr.behaviors.Pathfinding.prototype.acts.StartMoving,
 	cr.system_object.prototype.cnds.Every,
